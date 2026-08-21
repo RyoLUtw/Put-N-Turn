@@ -126,6 +126,7 @@ const CARD_DATA = [
   verb: card.phrase.split(" ")[0],
   particle: card.phrase.split(" ").at(-1),
   image: `Verb Phrase cards/card front/${card.phrase}.jpg`,
+  backImage: `Verb Phrase cards/card back/${card.phrase}.jpg`,
 }));
 
 const state = {
@@ -141,8 +142,41 @@ const state = {
   selectedVpId: null,
   selectedFunctionId: null,
   pendingFunctionFlips: 0,
+  handMode: "vp",
+  activeVpIndex: 0,
+  activeFunctionIndex: 0,
+  activeParticleIndex: 0,
+  targeting: null,
+  stagedVpParticleIndex: null,
+  stagedVpVisible: false,
+  animatingPlayId: null,
+  resolving: null,
   gameKey: "all",
 };
+
+const DEBUG_BUILD = "20260821-result-auto-flip";
+
+function debugLog(action, details = {}) {
+  console.log(`[Put N Turn ${DEBUG_BUILD}] ${action}`, details);
+}
+
+function debugWarn(action, details = {}) {
+  console.warn(`[Put N Turn ${DEBUG_BUILD}] ${action}`, details);
+}
+
+window.addEventListener("error", (event) => {
+  console.error(`[Put N Turn ${DEBUG_BUILD}] window-error`, {
+    message: event.message,
+    source: event.filename,
+    line: event.lineno,
+    column: event.colno,
+    error: event.error,
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  console.error(`[Put N Turn ${DEBUG_BUILD}] unhandled-rejection`, event.reason);
+});
 
 const els = {
   setup: document.querySelector("#setup"),
@@ -153,9 +187,21 @@ const els = {
   selectionSummary: document.querySelector("#selectionSummary"),
   startBtn: document.querySelector("#startBtn"),
   newGameBtn: document.querySelector("#newGameBtn"),
+  statsBtn: document.querySelector("#statsBtn"),
+  helpBtn: document.querySelector("#helpBtn"),
+  statsModal: document.querySelector("#statsModal"),
+  helpModal: document.querySelector("#helpModal"),
   particles: document.querySelector("#particles"),
+  vpConfirmTray: document.querySelector("#vpConfirmTray"),
   vpHand: document.querySelector("#vpHand"),
   functionHand: document.querySelector("#functionHand"),
+  tableArea: document.querySelector(".table-area"),
+  tableTitle: document.querySelector(".table-area h2"),
+  handArea: document.querySelector(".hand-area"),
+  handTitle: document.querySelector("#handTitle"),
+  vpModeBtn: document.querySelector("#vpModeBtn"),
+  functionModeBtn: document.querySelector("#functionModeBtn"),
+  playStage: document.querySelector("#playStage"),
   feedback: document.querySelector("#feedback"),
   feedbackContent: document.querySelector("#feedbackContent"),
   closeFeedback: document.querySelector("#closeFeedback"),
@@ -211,6 +257,406 @@ function cardButtonClasses(card) {
   const visible = state.particles.map((p) => p.face);
   const matchable = visible.some((particle) => particleMatches(card.particle, particle));
   return `card vp-card ${state.selectedVpId === card.id ? "selected" : ""} ${matchable ? "matchable" : ""}`;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(value, max));
+}
+
+function wheelOffset(index, activeIndex) {
+  return clamp(index - activeIndex, -2, 2);
+}
+
+function wheelStyle(index, activeIndex) {
+  const offset = wheelOffset(index, activeIndex);
+  return `--offset:${offset};--distance:${Math.abs(offset)};`;
+}
+
+function activeHandCards() {
+  return state.handMode === "vp" ? state.vpHand : state.functionHand;
+}
+
+function activeHandIndex() {
+  return state.handMode === "vp" ? state.activeVpIndex : state.activeFunctionIndex;
+}
+
+function setActiveHandIndex(index) {
+  if (state.handMode === "vp") state.activeVpIndex = clamp(index, 0, Math.max(0, state.vpHand.length - 1));
+  else state.activeFunctionIndex = clamp(index, 0, Math.max(0, state.functionHand.length - 1));
+}
+
+function moveActiveHand(delta) {
+  if (state.targeting || state.resolving || state.animatingPlayId) return;
+  setActiveHandIndex(activeHandIndex() + delta);
+  render();
+}
+
+function moveActiveParticle(delta) {
+  if (!state.targeting || state.resolving || state.animatingPlayId) return;
+  if (state.targeting.type === "vp") return;
+  state.activeParticleIndex = clamp(state.activeParticleIndex + delta, 0, Math.max(0, state.particles.length - 1));
+  render();
+}
+
+function setHandMode(mode) {
+  if (state.targeting || state.resolving || state.animatingPlayId) return;
+  state.handMode = mode;
+  state.selectedVpId = null;
+  state.selectedFunctionId = null;
+  state.pendingFunctionFlips = 0;
+  setActiveHandIndex(activeHandIndex());
+  render();
+}
+
+function cardBackFor(card) {
+  return card.backImage || "Function cards/card back/card back.jpg";
+}
+
+function renderPlayedStage() {
+  if (!state.resolving) {
+    els.playStage.classList.add("hidden");
+    els.playStage.innerHTML = "";
+    return;
+  }
+
+  const { card, correct, title } = state.resolving;
+  const actionLabel = correct ? "Move to discard pile" : "Move to retry pile";
+  els.playStage.classList.remove("hidden");
+  els.playStage.innerHTML = `
+    <div class="played-card ${state.resolving.flipped ? "is-flipped" : ""}" aria-label="${title}">
+      <div class="played-card-face played-card-front">
+        <img src="${card.image}" alt="${card.phrase || card.label}">
+      </div>
+      <div class="played-card-face played-card-back">
+        <img src="${cardBackFor(card)}" alt="">
+      </div>
+    </div>
+    <div class="result-overlay ${correct ? "good" : "bad"}">
+      <p>${card.example}</p>
+      <div class="result-actions">
+        <button class="result-action secondary-action" type="button" data-flip-result>Flip</button>
+        <button class="result-action" type="button" data-confirm-result>${actionLabel}</button>
+      </div>
+    </div>
+  `;
+}
+
+function flipResultCard() {
+  if (!state.resolving) return;
+  state.resolving.autoFlipArmed = false;
+  state.resolving.flipped = !state.resolving.flipped;
+  const playedCard = els.playStage.querySelector(".played-card");
+  playedCard?.classList.toggle("is-flipped", state.resolving.flipped);
+  debugLog("result-card-flip", {
+    phrase: state.resolving.card?.phrase,
+    flipped: state.resolving.flipped,
+  });
+}
+
+function autoFlipResultCard(cardId) {
+  if (!state.resolving || state.resolving.card?.id !== cardId || !state.resolving.autoFlipArmed) return;
+  state.resolving.flipped = true;
+  state.resolving.autoFlipArmed = false;
+  const playedCard = els.playStage.querySelector(".played-card");
+  playedCard?.classList.add("is-flipped");
+  debugLog("result-card-auto-flip", {
+    phrase: state.resolving.card?.phrase,
+  });
+}
+
+function confirmResult() {
+  if (!state.resolving) return;
+  debugLog("result-confirm", {
+    phrase: state.resolving.card?.phrase,
+    correct: state.resolving.correct,
+  });
+  state.resolving = null;
+  endTurn({ draw: true });
+}
+
+function stageActiveHandPlay() {
+  if (state.targeting || state.resolving || state.animatingPlayId) {
+    debugWarn("stage-active-hand-blocked", {
+      targeting: state.targeting,
+      resolving: Boolean(state.resolving),
+      animatingPlayId: state.animatingPlayId,
+    });
+    return;
+  }
+  hideFeedback();
+
+  if (state.handMode === "vp") {
+    const card = state.vpHand[state.activeVpIndex];
+    if (!card) {
+      debugWarn("stage-vp-no-card", { activeVpIndex: state.activeVpIndex, handLength: state.vpHand.length });
+      return;
+    }
+    debugLog("stage-vp-start", {
+      cardId: card.id,
+      phrase: card.phrase,
+      activeVpIndex: state.activeVpIndex,
+    });
+    state.selectedFunctionId = null;
+    state.pendingFunctionFlips = 0;
+    state.selectedVpId = card.id;
+    state.animatingPlayId = card.id;
+    render();
+    window.setTimeout(() => {
+      state.animatingPlayId = null;
+      state.targeting = { type: "vp", cardId: card.id };
+      state.stagedVpParticleIndex = null;
+      state.stagedVpVisible = false;
+      state.activeParticleIndex = 0;
+      debugLog("stage-vp-ready", {
+        cardId: card.id,
+        phrase: card.phrase,
+        particles: state.particles.map((particle) => particle.face),
+      });
+      render();
+      window.setTimeout(() => {
+        if (state.targeting?.type !== "vp" || state.targeting.cardId !== card.id || state.stagedVpParticleIndex !== null) return;
+        state.stagedVpVisible = true;
+        debugLog("stage-vp-insert-after-expand", { cardId: card.id, phrase: card.phrase });
+        render();
+      }, 460);
+    }, 360);
+    return;
+  }
+
+  const card = state.functionHand[state.activeFunctionIndex];
+  if (!card) {
+    debugWarn("stage-function-no-card", { activeFunctionIndex: state.activeFunctionIndex, handLength: state.functionHand.length });
+    return;
+  }
+  debugLog("stage-function-start", { cardId: card.id, label: card.label, type: card.type });
+  state.selectedVpId = null;
+  state.selectedFunctionId = card.id;
+  state.pendingFunctionFlips = card.type === "flip2" ? 2 : 1;
+  state.animatingPlayId = card.id;
+  render();
+  window.setTimeout(() => {
+    state.animatingPlayId = null;
+    if (card.type === "shuffle") {
+      shuffleHandFunction();
+    } else if (card.type === "flipAll") {
+      flipAllFunction();
+    } else {
+      state.targeting = { type: "function", cardId: card.id };
+      state.activeParticleIndex = 0;
+      render();
+    }
+  }, 360);
+}
+
+function playActiveTarget() {
+  if (!state.targeting || state.resolving || state.animatingPlayId) return;
+  if (state.targeting.type === "vp") return;
+  const particleIndex = state.activeParticleIndex;
+  state.animatingPlayId = `particle-${particleIndex}`;
+  render();
+  window.setTimeout(() => {
+    state.animatingPlayId = null;
+    if (state.targeting?.type === "vp") playVp(particleIndex);
+    else if (state.targeting?.type === "function") playFunction(particleIndex);
+  }, 320);
+}
+
+function stagedVpCard() {
+  if (state.targeting?.type !== "vp") return null;
+  return state.vpHand.find((card) => card.id === state.targeting.cardId) || null;
+}
+
+function stagedVpMarkup(card, { placed = false } = {}) {
+  return `
+    <div class="staged-vp-card ${placed ? "is-placed" : ""}" data-staged-vp-id="${card.id}" aria-label="Staged VP ${card.phrase}">
+      <img src="${card.image}" alt="${card.phrase}" draggable="false">
+    </div>
+  `;
+}
+
+function particleIndexFromPoint(clientX, clientY) {
+  const particleButtons = [...els.particles.querySelectorAll("[data-particle-index]")];
+  const containingButton = particleButtons.find((button) => {
+    const rect = button.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  });
+  if (containingButton) return Number(containingButton.dataset.particleIndex);
+
+  let nearest = null;
+  particleButtons.forEach((button) => {
+    const rect = button.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const distance = Math.hypot(clientX - centerX, clientY - centerY);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { button, distance };
+    }
+  });
+  return nearest ? Number(nearest.button.dataset.particleIndex) : null;
+}
+
+function animateStagedVpToParticle(particleIndex) {
+  debugLog("staged-vp-animation-request", {
+    particleIndex,
+    targeting: state.targeting,
+    resolving: Boolean(state.resolving),
+    animatingPlayId: state.animatingPlayId,
+    selectedVpId: state.selectedVpId,
+  });
+
+  if (state.targeting?.type !== "vp" || state.resolving || state.animatingPlayId) {
+    debugWarn("staged-vp-animation-blocked", {
+      particleIndex,
+      targeting: state.targeting,
+      resolving: Boolean(state.resolving),
+      animatingPlayId: state.animatingPlayId,
+    });
+    return;
+  }
+  const staged = els.particles.querySelector("[data-staged-vp-id]");
+  const target = els.particles.querySelector(`[data-particle-index="${particleIndex}"]`);
+  if (!staged || !target) {
+    debugWarn("staged-vp-animation-missing-elements", {
+      particleIndex,
+      hasStaged: Boolean(staged),
+      hasTarget: Boolean(target),
+    });
+    state.stagedVpParticleIndex = particleIndex;
+    state.activeParticleIndex = particleIndex;
+    render();
+    return;
+  }
+
+  state.animatingPlayId = "staged-vp";
+  const stagedRect = staged.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const finalLeft = targetRect.left + (targetRect.width - stagedRect.width) / 2;
+  const finalTop = targetRect.top + (targetRect.height - stagedRect.height) / 2;
+  debugLog("staged-vp-animation-start", {
+    particleIndex,
+    stagedId: staged.dataset.stagedVpId,
+    targetLabel: target.textContent.trim(),
+    stagedRect: {
+      left: Math.round(stagedRect.left),
+      top: Math.round(stagedRect.top),
+      width: Math.round(stagedRect.width),
+      height: Math.round(stagedRect.height),
+    },
+    targetRect: {
+      left: Math.round(targetRect.left),
+      top: Math.round(targetRect.top),
+      width: Math.round(targetRect.width),
+      height: Math.round(targetRect.height),
+    },
+    finalRect: {
+      left: Math.round(finalLeft),
+      top: Math.round(finalTop),
+      width: Math.round(stagedRect.width),
+      height: Math.round(stagedRect.height),
+    },
+  });
+  const clone = staged.cloneNode(true);
+  clone.classList.add("staged-vp-flight");
+  clone.style.left = `${stagedRect.left}px`;
+  clone.style.top = `${stagedRect.top}px`;
+  clone.style.width = `${stagedRect.width}px`;
+  clone.style.height = `${stagedRect.height}px`;
+  clone.style.transform = "none";
+  document.body.appendChild(clone);
+  staged.classList.add("is-flying-source");
+
+  const animation = clone.animate([
+    {
+      left: `${stagedRect.left}px`,
+      top: `${stagedRect.top}px`,
+      width: `${stagedRect.width}px`,
+      height: `${stagedRect.height}px`,
+      opacity: 1,
+    },
+    {
+      left: `${finalLeft}px`,
+      top: `${finalTop}px`,
+      width: `${stagedRect.width}px`,
+      height: `${stagedRect.height}px`,
+      opacity: 0.98,
+    },
+  ], {
+    duration: 640,
+    easing: "cubic-bezier(.2,.8,.2,1)",
+    fill: "forwards",
+  });
+
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    state.animatingPlayId = "staged-vp-settling";
+    const cloneRect = clone.getBoundingClientRect();
+    debugLog("staged-vp-animation-finish", {
+      particleIndex,
+      cloneRect: {
+        left: Math.round(cloneRect.left),
+        top: Math.round(cloneRect.top),
+        width: Math.round(cloneRect.width),
+        height: Math.round(cloneRect.height),
+      },
+    });
+    window.setTimeout(() => {
+      debugLog("staged-vp-animation-place", { particleIndex, selectedVpId: state.selectedVpId });
+      clone.remove();
+      staged.classList.remove("is-flying-source");
+      state.animatingPlayId = null;
+      state.stagedVpParticleIndex = particleIndex;
+      state.activeParticleIndex = particleIndex;
+      render();
+    }, 360);
+  };
+  animation.addEventListener("finish", finish, { once: true });
+  window.setTimeout(() => {
+    if (state.animatingPlayId === "staged-vp") {
+      debugWarn("staged-vp-animation-fallback-timeout", { particleIndex });
+      finish();
+    }
+  }, 980);
+}
+
+function confirmPlacedVp() {
+  if (state.targeting?.type !== "vp" || state.stagedVpParticleIndex === null || state.resolving || state.animatingPlayId) {
+    debugWarn("confirm-vp-blocked", {
+      targeting: state.targeting,
+      stagedVpParticleIndex: state.stagedVpParticleIndex,
+      resolving: Boolean(state.resolving),
+      animatingPlayId: state.animatingPlayId,
+    });
+    return;
+  }
+
+  debugLog("confirm-vp-resolve", {
+    particleIndex: state.stagedVpParticleIndex,
+    selectedVpId: state.selectedVpId,
+  });
+  playVp(state.stagedVpParticleIndex);
+}
+
+function unplayVp() {
+  if (state.targeting?.type !== "vp" || state.resolving || state.animatingPlayId) {
+    debugWarn("unplay-vp-blocked", {
+      targeting: state.targeting,
+      resolving: Boolean(state.resolving),
+      animatingPlayId: state.animatingPlayId,
+    });
+    return;
+  }
+
+  debugLog("unplay-vp", {
+    selectedVpId: state.selectedVpId,
+    stagedVpParticleIndex: state.stagedVpParticleIndex,
+  });
+  state.targeting = null;
+  state.stagedVpParticleIndex = null;
+  state.stagedVpVisible = false;
+  state.animatingPlayId = null;
+  render();
 }
 
 function uniqueValues(items) {
@@ -394,39 +840,90 @@ function render() {
   els.handCount.textContent = state.vpHand.length;
   els.turnCount.textContent = state.turn;
 
-  els.particles.innerHTML = state.particles.map((particle, index) => `
-    <button class="card particle-card" data-particle-index="${index}" aria-label="Play on ${particle.face}">
-      <img src="particle cards/${particle.face}.jpg" alt="${particle.face}">
+  state.activeVpIndex = clamp(state.activeVpIndex, 0, Math.max(0, state.vpHand.length - 1));
+  state.activeFunctionIndex = clamp(state.activeFunctionIndex, 0, Math.max(0, state.functionHand.length - 1));
+  state.activeParticleIndex = clamp(state.activeParticleIndex, 0, Math.max(0, state.particles.length - 1));
+
+  const functionTargeting = state.targeting?.type === "function";
+  const vpTargeting = state.targeting?.type === "vp";
+  const handWheelAway = vpTargeting || Boolean(state.resolving);
+  const stagedCard = stagedVpCard();
+  els.game.classList.toggle("is-targeting", functionTargeting);
+  els.game.classList.toggle("vp-table-expanded", handWheelAway);
+  els.tableArea.classList.toggle("targeting", functionTargeting);
+  els.tableArea.classList.toggle("vp-staging", vpTargeting);
+  els.tableArea.classList.toggle("vp-confirming", vpTargeting && state.stagedVpParticleIndex !== null);
+  els.tableTitle.textContent = functionTargeting ? "Target Particle Wheel" : "Particle Cards";
+  els.handArea.classList.toggle("hidden", functionTargeting);
+  els.handArea.classList.toggle("wheel-away", handWheelAway);
+  els.handArea.setAttribute("aria-hidden", String(functionTargeting || handWheelAway));
+  els.vpModeBtn.classList.toggle("active", state.handMode === "vp");
+  els.functionModeBtn.classList.toggle("active", state.handMode === "function");
+  els.vpModeBtn.setAttribute("aria-pressed", String(state.handMode === "vp"));
+  els.functionModeBtn.setAttribute("aria-pressed", String(state.handMode === "function"));
+  els.handTitle.textContent = state.handMode === "vp" ? "Verb Phrase Wheel" : "Function Card Wheel";
+
+  els.particles.className = functionTargeting ? "particles target-wheel" : "particles";
+  els.particles.innerHTML = `${state.particles.map((particle, index) => `
+    <button class="card particle-card ${functionTargeting && index === state.activeParticleIndex ? "is-active" : ""} ${vpTargeting ? "targetable" : ""} ${state.animatingPlayId === `particle-${index}` ? "playing-up" : ""}" data-particle-index="${index}" style="${functionTargeting ? wheelStyle(index, state.activeParticleIndex) : ""}" aria-label="${vpTargeting ? "Play VP on" : "Play on"} ${particle.face}">
+      <img src="particle cards/${particle.face}.jpg" alt="${particle.face}" draggable="false">
       <span class="card-title">${particle.face.toUpperCase()}</span>
+      ${stagedCard && state.stagedVpParticleIndex === index ? stagedVpMarkup(stagedCard, { placed: true }) : ""}
     </button>
-  `).join("");
+  `).join("")}${stagedCard && state.stagedVpParticleIndex === null && state.stagedVpVisible ? stagedVpMarkup(stagedCard) : ""}`;
+  if (stagedCard && (state.stagedVpVisible || state.stagedVpParticleIndex !== null)) {
+    const particleFace = state.particles[state.stagedVpParticleIndex]?.face.toUpperCase() || "";
+    const trayText = particleFace ? `on ${particleFace}` : "not placed";
+    els.vpConfirmTray.classList.remove("hidden");
+    els.vpConfirmTray.innerHTML = `
+      <div class="vp-confirm-copy">
+        <strong>${stagedCard.phrase}</strong>
+        <span>${trayText}</span>
+      </div>
+      <div class="vp-confirm-actions">
+        <button class="unplay-vp-btn" type="button" data-unplay-vp>Unplay</button>
+        ${state.stagedVpParticleIndex !== null ? `<button class="confirm-vp-btn" type="button" data-confirm-vp>Confirm</button>` : ""}
+      </div>
+    `;
+  } else {
+    els.vpConfirmTray.classList.add("hidden");
+    els.vpConfirmTray.innerHTML = "";
+  }
 
-  els.vpHand.innerHTML = state.vpHand.map((card) => `
-    <button class="${cardButtonClasses(card)}" data-vp-id="${card.id}">
-      <img src="${card.image}" alt="${card.phrase}">
-      <span class="card-title">${card.phrase}</span>
-      <span class="meaning">${card.meaning}</span>
-      <span class="card-meta">Particle: ${card.particle}</span>
-    </button>
-  `).join("");
+  const handCards = activeHandCards();
+  const handIndex = activeHandIndex();
+  els.vpHand.innerHTML = handCards.length ? handCards.map((card, index) => {
+    const active = index === handIndex;
+    const classes = state.handMode === "vp" ? cardButtonClasses(card) : `card function-card ${state.selectedFunctionId === card.id ? "selected" : ""}`;
+    const idAttr = state.handMode === "vp" ? `data-vp-id="${card.id}"` : `data-function-id="${card.id}"`;
+    return `
+      <button class="${classes} wheel-card ${active ? "is-active" : ""} ${vpTargeting && state.targeting.cardId === card.id ? "staged-away" : ""} ${Math.abs(index - handIndex) > 2 ? "out-of-range" : ""} ${state.animatingPlayId === card.id ? "playing-up" : ""}" ${idAttr} data-wheel-index="${index}" style="${wheelStyle(index, handIndex)}">
+        <img src="${card.image}" alt="${card.phrase || card.label}" draggable="false">
+        ${state.handMode === "function" ? `<span class="card-title">${card.label}</span>` : ""}
+      </button>
+    `;
+  }).join("") : `<div class="hand-empty">No ${state.handMode === "vp" ? "VP" : "function"} cards in hand</div>`;
 
-  els.functionHand.innerHTML = state.functionHand.map((card) => `
-    <button class="card function-card ${state.selectedFunctionId === card.id ? "selected" : ""}" data-function-id="${card.id}">
-      <img src="${card.image}" alt="${card.label}">
-      <span class="card-title">${card.label}</span>
-    </button>
-  `).join("");
+  els.functionHand.innerHTML = "";
 
   if (state.selectedFunctionId) {
     const selected = state.functionHand.find((card) => card.id === state.selectedFunctionId);
     els.matchHint.textContent = selected?.type === "shuffle"
       ? "Shuffle Hand exchanges your current VP hand with new VPs."
-      : `Choose ${state.pendingFunctionFlips || 1} particle card${state.pendingFunctionFlips === 1 ? "" : "s"} to flip.`;
+      : `Swipe to choose ${state.pendingFunctionFlips || 1} particle card${state.pendingFunctionFlips === 1 ? "" : "s"}, then swipe up to flip.`;
+  } else if (state.targeting) {
+    els.matchHint.textContent = vpTargeting
+      ? (state.stagedVpParticleIndex === null
+        ? "Click a particle card to place the staged VP."
+        : "Click another particle to move the VP, or confirm below to check the match.")
+      : "Swipe left or right to choose a particle to flip. Swipe up to play.";
   } else {
-    els.matchHint.textContent = state.selectedVpId
-      ? "Choose the particle card you want to match against."
-      : "Choose a VP, then choose a particle.";
+    els.matchHint.textContent = state.handMode === "vp"
+      ? "Swipe left or right to view VPs in hand. Swipe up to play the centered card."
+      : "Swipe left or right to view function cards. Swipe up to play the centered card.";
   }
+
+  renderPlayedStage();
 }
 
 function setupParticles() {
@@ -475,9 +972,21 @@ function hideFeedback() {
   els.feedback.classList.add("hidden");
 }
 
+function showModal(modal) {
+  modal.classList.remove("hidden");
+}
+
+function hideModals() {
+  els.statsModal.classList.add("hidden");
+  els.helpModal.classList.add("hidden");
+}
+
 function startGame() {
   const cardIndices = selectedCardIndices();
-  if (!cardIndices.length) return;
+  if (!cardIndices.length) {
+    debugWarn("start-game-blocked-no-cards");
+    return;
+  }
 
   state.gameKey = cardIndices.join("-");
   state.drawPile = shuffle(cardIndices.map((index) => CARD_DATA[index]));
@@ -491,37 +1000,77 @@ function startGame() {
   state.selectedVpId = null;
   state.selectedFunctionId = null;
   state.pendingFunctionFlips = 0;
+  state.handMode = "vp";
+  state.activeVpIndex = 0;
+  state.activeFunctionIndex = 0;
+  state.activeParticleIndex = 0;
+  state.targeting = null;
+  state.stagedVpParticleIndex = null;
+  state.stagedVpVisible = false;
+  state.animatingPlayId = null;
+  state.resolving = null;
   setupParticles();
 
   for (let i = 0; i < 4; i += 1) dealOne();
 
   els.setup.classList.add("hidden");
   els.game.classList.remove("hidden");
+  document.body.classList.add("game-active");
   hideFeedback();
+  debugLog("start-game", {
+    selectedCount: cardIndices.length,
+    vpHand: state.vpHand.map((card) => card.phrase),
+    functionHand: state.functionHand.map((card) => card.label),
+    particles: state.particles.map((particle) => particle.face),
+  });
   render();
 }
 
 function playVp(particleIndex) {
   const cardIndex = state.vpHand.findIndex((card) => card.id === state.selectedVpId);
-  if (cardIndex < 0) return;
+  if (cardIndex < 0) {
+    debugWarn("play-vp-missing-selected-card", {
+      particleIndex,
+      selectedVpId: state.selectedVpId,
+      vpHand: state.vpHand.map((card) => ({ id: card.id, phrase: card.phrase })),
+    });
+    return;
+  }
 
   const card = state.vpHand.splice(cardIndex, 1)[0];
   const tableParticle = state.particles[particleIndex].face;
   const correct = particleMatches(card.particle, tableParticle);
+  debugLog("play-vp-resolve", {
+    particleIndex,
+    tableParticle,
+    phrase: card.phrase,
+    cardParticle: card.particle,
+    correct,
+  });
+  let title;
+  let body;
 
   if (correct) {
     state.score += 1;
     state.discardPile.push(card);
-    showFeedback("Matched", `${card.phrase} uses ${card.particle}. ${card.meaning}: ${card.example}`, "good");
+    title = "Correct";
+    body = `${card.phrase} uses ${card.particle}. ${card.meaning}: ${card.example}`;
   } else {
     state.score -= 1;
     state.retryPile.unshift(card);
-    showFeedback("Try Again Later", `${card.phrase} uses ${card.particle}, not ${tableParticle}. It moved to the retry pile.`, "bad");
+    title = "Try Again Later";
+    body = `${card.phrase} uses ${card.particle}, not ${tableParticle}. It moved to the retry pile.`;
   }
 
   flipParticle(particleIndex);
   state.selectedVpId = null;
-  endTurn();
+  state.targeting = null;
+  state.stagedVpParticleIndex = null;
+  state.stagedVpVisible = false;
+  state.activeVpIndex = clamp(cardIndex, 0, Math.max(0, state.vpHand.length - 1));
+  state.resolving = { card, correct, title, body, flipped: false, autoFlipArmed: true };
+  render();
+  window.setTimeout(() => autoFlipResultCard(card.id), 640);
 }
 
 function playFunction(particleIndex) {
@@ -532,6 +1081,7 @@ function playFunction(particleIndex) {
   flipParticle(particleIndex);
   state.pendingFunctionFlips -= 1;
   if (state.pendingFunctionFlips > 0) {
+    state.activeParticleIndex = clamp(particleIndex, 0, Math.max(0, state.particles.length - 1));
     render();
     return;
   }
@@ -539,6 +1089,8 @@ function playFunction(particleIndex) {
   state.functionHand.splice(functionIndex, 1);
   state.selectedFunctionId = null;
   state.pendingFunctionFlips = 0;
+  state.targeting = null;
+  state.activeFunctionIndex = clamp(functionIndex, 0, Math.max(0, state.functionHand.length - 1));
   showFeedback(card.label, `${card.label} used. Your turn ends.`, "good");
   endTurn({ draw: false });
 }
@@ -556,6 +1108,8 @@ function shuffleHandFunction() {
   const [card] = state.functionHand.splice(functionIndex, 1);
   state.selectedFunctionId = null;
   state.pendingFunctionFlips = 0;
+  state.targeting = null;
+  state.activeFunctionIndex = clamp(functionIndex, 0, Math.max(0, state.functionHand.length - 1));
   showFeedback(card.label, `Exchanged ${count} VP cards with the draw pile. Your turn ends.`, "good");
   endTurn({ draw: false });
 }
@@ -567,6 +1121,8 @@ function flipAllFunction() {
   const [card] = state.functionHand.splice(functionIndex, 1);
   state.selectedFunctionId = null;
   state.pendingFunctionFlips = 0;
+  state.targeting = null;
+  state.activeFunctionIndex = clamp(functionIndex, 0, Math.max(0, state.functionHand.length - 1));
   showFeedback(card.label, "All particle cards flipped. Your turn ends.", "good");
   endTurn({ draw: false });
 }
@@ -678,39 +1234,228 @@ els.deckPicker.addEventListener("input", (event) => {
 });
 
 els.newGameBtn.addEventListener("click", () => {
+  hideModals();
   els.game.classList.add("hidden");
   els.setup.classList.remove("hidden");
+  document.body.classList.remove("game-active");
   hideFeedback();
 });
 els.closeFeedback.addEventListener("click", hideFeedback);
-
-els.vpHand.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-vp-id]");
-  if (!button) return;
-  state.selectedFunctionId = null;
-  state.pendingFunctionFlips = 0;
-  state.selectedVpId = button.dataset.vpId;
-  render();
+els.statsBtn.addEventListener("click", () => showModal(els.statsModal));
+els.helpBtn.addEventListener("click", () => showModal(els.helpModal));
+els.game.addEventListener("click", (event) => {
+  if (event.target.matches("[data-close-modal]")) {
+    hideModals();
+    return;
+  }
+  if (event.target.classList.contains("modal")) hideModals();
 });
 
-els.functionHand.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-function-id]");
+els.vpHand.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-wheel-index]");
   if (!button) return;
-  state.selectedVpId = null;
-  state.selectedFunctionId = button.dataset.functionId;
-  const selected = state.functionHand.find((card) => card.id === state.selectedFunctionId);
-  state.pendingFunctionFlips = selected?.type === "flip2" ? 2 : 1;
-  if (selected?.type === "shuffle") shuffleHandFunction();
-  if (selected?.type === "flipAll") flipAllFunction();
-  render();
+  const index = Number(button.dataset.wheelIndex);
+  if (index !== activeHandIndex()) {
+    setActiveHandIndex(index);
+    render();
+    return;
+  }
+  stageActiveHandPlay();
+});
+
+els.vpConfirmTray.addEventListener("click", (event) => {
+  const unplayButton = event.target.closest("[data-unplay-vp]");
+  if (unplayButton) {
+    event.preventDefault();
+    unplayVp();
+    return;
+  }
+
+  const confirmButton = event.target.closest("[data-confirm-vp]");
+  if (!confirmButton) return;
+  event.preventDefault();
+  confirmPlacedVp();
+});
+
+els.playStage.addEventListener("click", (event) => {
+  const flipButton = event.target.closest("[data-flip-result]");
+  if (flipButton) {
+    event.preventDefault();
+    flipResultCard();
+    return;
+  }
+
+  if (!event.target.closest("[data-confirm-result]")) return;
+  event.preventDefault();
+  confirmResult();
 });
 
 els.particles.addEventListener("click", (event) => {
   const button = event.target.closest("[data-particle-index]");
-  if (!button) return;
-  const particleIndex = Number(button.dataset.particleIndex);
-  if (state.selectedVpId) playVp(particleIndex);
-  if (state.selectedFunctionId) playFunction(particleIndex);
+  let particleIndex = button ? Number(button.dataset.particleIndex) : null;
+  if (!button) {
+    particleIndex = state.targeting?.type === "vp" ? particleIndexFromPoint(event.clientX, event.clientY) : null;
+    debugWarn("particle-click-no-button", {
+      targetTag: event.target?.tagName,
+      targetClass: event.target?.className,
+      clientX: Math.round(event.clientX),
+      clientY: Math.round(event.clientY),
+      inferredParticleIndex: particleIndex,
+    });
+    if (particleIndex === null) return;
+  }
+  debugLog("particle-click", {
+    particleIndex,
+    particleFace: state.particles[particleIndex]?.face,
+    targeting: state.targeting,
+    animatingPlayId: state.animatingPlayId,
+    hasStaged: Boolean(els.particles.querySelector("[data-staged-vp-id]")),
+    buttonText: button?.textContent.trim() || "(inferred from container click)",
+  });
+  if (state.targeting?.type === "vp") {
+    animateStagedVpToParticle(particleIndex);
+    return;
+  }
+  if (!state.targeting) {
+    debugWarn("particle-click-without-targeting", { particleIndex });
+    return;
+  }
+  if (particleIndex !== state.activeParticleIndex) {
+    state.activeParticleIndex = particleIndex;
+    render();
+    return;
+  }
+  playActiveTarget();
+});
+
+els.vpConfirmTray.addEventListener("keydown", (event) => {
+  if (!event.target.closest("[data-confirm-vp]") && !event.target.closest("[data-unplay-vp]")) return;
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  if (event.target.closest("[data-unplay-vp]")) unplayVp();
+  else confirmPlacedVp();
+});
+
+els.vpModeBtn.addEventListener("click", () => setHandMode("vp"));
+els.functionModeBtn.addEventListener("click", () => setHandMode("function"));
+
+function bindSwipeWheel(element, handlers) {
+  let startX = 0;
+  let startY = 0;
+  let pointerId = null;
+  let dragging = false;
+  let suppressClick = false;
+  let dragAxis = null;
+
+  element.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    dragging = false;
+    dragAxis = null;
+    element.setPointerCapture(pointerId);
+  });
+
+  element.addEventListener("pointermove", (event) => {
+    if (pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    if (!dragging && Math.hypot(deltaX, deltaY) < 6) return;
+    dragging = true;
+    if (!dragAxis && Math.hypot(deltaX, deltaY) >= 14) {
+      dragAxis = Math.abs(deltaY) > Math.abs(deltaX) * 1.15 ? "vertical" : "horizontal";
+    }
+    element.classList.add("dragging");
+    const liftY = dragAxis === "vertical" && deltaY < 0 ? clamp(deltaY, -180, 0) : 0;
+    const slideX = dragAxis === "horizontal" ? clamp(deltaX, -120, 120) : 0;
+    element.style.setProperty("--drag-x", `${slideX}px`);
+    element.style.setProperty("--drag-y", `${liftY}px`);
+    event.preventDefault();
+  });
+
+  element.addEventListener("pointerup", (event) => {
+    if (pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    pointerId = null;
+    element.classList.remove("dragging");
+    element.style.removeProperty("--drag-x");
+    element.style.removeProperty("--drag-y");
+    suppressClick = dragging && (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8);
+    window.setTimeout(() => { suppressClick = false; }, 0);
+
+    if (dragAxis === "vertical" && Math.abs(deltaY) > 64 && deltaY < 0) {
+      handlers.up();
+      dragAxis = null;
+      return;
+    }
+
+    if (dragAxis === "horizontal" && Math.abs(deltaX) > 48) {
+      if (deltaX < 0) handlers.left();
+      else handlers.right();
+    }
+    dragAxis = null;
+  });
+
+  element.addEventListener("pointercancel", () => {
+    pointerId = null;
+    dragging = false;
+    dragAxis = null;
+    element.classList.remove("dragging");
+    element.style.removeProperty("--drag-x");
+    element.style.removeProperty("--drag-y");
+  });
+
+  element.addEventListener("click", (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = false;
+  }, true);
+}
+
+bindSwipeWheel(els.vpHand, {
+  left: () => moveActiveHand(1),
+  right: () => moveActiveHand(-1),
+  up: stageActiveHandPlay,
+});
+
+bindSwipeWheel(els.particles, {
+  left: () => moveActiveParticle(1),
+  right: () => moveActiveParticle(-1),
+  up: playActiveTarget,
+});
+
+document.addEventListener("keydown", (event) => {
+  if (els.game.classList.contains("hidden")) return;
+  if (event.key === "Escape") {
+    hideModals();
+    return;
+  }
+  if (event.key === "ArrowLeft") {
+    if (state.targeting?.type === "function") moveActiveParticle(-1);
+    else moveActiveHand(-1);
+  }
+  if (event.key === "ArrowRight") {
+    if (state.targeting?.type === "function") moveActiveParticle(1);
+    else moveActiveHand(1);
+  }
+  if (event.key === "ArrowUp" || event.key === "Enter") {
+    if (state.targeting?.type === "function") playActiveTarget();
+    else stageActiveHandPlay();
+  }
+});
+
+window.putNTurnDebug = {
+  build: DEBUG_BUILD,
+  state,
+  els,
+};
+debugLog("boot", {
+  href: window.location.href,
+  userAgent: navigator.userAgent,
+  build: DEBUG_BUILD,
 });
 
 renderCardPicker();

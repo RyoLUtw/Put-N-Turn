@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Put N Turn</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20260821-result-auto-flip">
   </head>
   <body>
     <main class="app">
@@ -13,12 +13,6 @@
           <h1>Put N Turn</h1>
           <p>Match verb phrases to the particle currently showing on the table.</p>
         </div>
-        <section class="scoreboard" aria-label="Scoreboard">
-          <div><span>Score</span><strong id="score">0</strong></div>
-          <div><span>Best</span><strong id="bestScore">0</strong></div>
-          <div><span>Draw</span><strong id="drawCount">0</strong></div>
-          <div><span>Retry</span><strong id="retryCount">0</strong></div>
-        </section>
       </header>
 
       <section id="setup" class="setup">
@@ -42,21 +36,10 @@
       </section>
 
       <section id="game" class="game hidden" aria-live="polite">
-        <aside class="panel">
-          <div class="panel-row">
-            <span>Turn</span>
-            <strong id="turnCount">1</strong>
-          </div>
-          <div class="panel-row">
-            <span>Discarded</span>
-            <strong id="discardCount">0</strong>
-          </div>
-          <div class="panel-row">
-            <span>VPs in hand</span>
-            <strong id="handCount">0</strong>
-          </div>
-          <button id="newGameBtn" class="secondary">New Game</button>
-        </aside>
+        <div class="game-controls" aria-label="Game controls">
+          <button id="helpBtn" class="icon-btn" type="button" aria-label="Show instructions">?</button>
+          <button id="statsBtn" class="icon-btn" type="button" aria-label="Show stats">#</button>
+        </div>
 
         <section class="table-area">
           <h2>Particle Cards</h2>
@@ -65,8 +48,16 @@
 
         <section class="hand-area">
           <div class="section-title">
-            <h2>Verb Phrase Hand</h2>
-            <p id="matchHint">Choose a VP, then choose a particle.</p>
+            <h2 id="handTitle">Verb Phrase Hand</h2>
+            <div class="hand-tools" aria-label="Hand controls">
+              <button id="vpModeBtn" class="mode-btn active" type="button" aria-label="Show verb phrase cards" aria-pressed="true">
+                <span class="mode-icon mode-icon-vp" aria-hidden="true"></span>
+              </button>
+              <button id="functionModeBtn" class="mode-btn" type="button" aria-label="Show function cards" aria-pressed="false">
+                <span class="mode-icon mode-icon-fn" aria-hidden="true"></span>
+              </button>
+            </div>
+            <p id="matchHint">Swipe left or right to browse. Swipe up to play.</p>
           </div>
           <div id="vpHand" class="hand"></div>
         </section>
@@ -74,6 +65,36 @@
         <section class="function-area">
           <h2>Function Cards</h2>
           <div id="functionHand" class="function-hand"></div>
+        </section>
+
+        <div id="vpConfirmTray" class="vp-confirm-tray hidden"></div>
+
+        <section id="playStage" class="play-stage hidden" aria-live="polite"></section>
+
+        <section id="statsModal" class="modal hidden" aria-modal="true" role="dialog" aria-labelledby="statsTitle">
+          <div class="modal-content">
+            <button class="modal-close" type="button" data-close-modal aria-label="Close stats">x</button>
+            <h2 id="statsTitle">Stats</h2>
+            <div class="scoreboard" aria-label="Scoreboard">
+              <div><span>Score</span><strong id="score">0</strong></div>
+              <div><span>Best</span><strong id="bestScore">0</strong></div>
+              <div><span>Draw</span><strong id="drawCount">0</strong></div>
+              <div><span>Retry</span><strong id="retryCount">0</strong></div>
+              <div><span>Turn</span><strong id="turnCount">1</strong></div>
+              <div><span>Discarded</span><strong id="discardCount">0</strong></div>
+              <div><span>VPs in hand</span><strong id="handCount">0</strong></div>
+            </div>
+            <button id="newGameBtn" class="secondary">New Game</button>
+          </div>
+        </section>
+
+        <section id="helpModal" class="modal hidden" aria-modal="true" role="dialog" aria-labelledby="helpTitle">
+          <div class="modal-content">
+            <button class="modal-close" type="button" data-close-modal aria-label="Close instructions">x</button>
+            <h2 id="helpTitle">How To Play</h2>
+            <p>Swipe left or right to view cards. Swipe up to stage the centered card.</p>
+            <p>Click a particle card to place the staged VP. Click another particle to move it, then confirm to check the match.</p>
+          </div>
         </section>
       </section>
 
@@ -83,6 +104,6 @@
       </section>
     </main>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260821-result-auto-flip"></script>
   </body>
 </html>
