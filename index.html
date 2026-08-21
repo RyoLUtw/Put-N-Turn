@@ -22,12 +22,23 @@
       </header>
 
       <section id="setup" class="setup">
-        <div class="setup-copy">
-          <h2>Choose Decks</h2>
-          <p>Select one or more decks. The game starts with 4 verb phrase cards and 2 function cards.</p>
+        <div class="setup-header">
+          <div class="setup-copy">
+            <h2>Choose Words</h2>
+            <p>Select the verb phrases you want to practice. The game starts with up to 4 verb phrase cards and 2 function cards.</p>
+            <p id="selectionSummary" class="selection-summary"></p>
+          </div>
+          <div class="setup-actions">
+            <button id="quickSelectBtn" class="secondary" type="button" aria-pressed="false">Quick Select: Off</button>
+            <button id="startBtn" class="primary">Start Game</button>
+          </div>
         </div>
-        <fieldset id="deckPicker" class="deck-picker" aria-label="Deck selection"></fieldset>
-        <button id="startBtn" class="primary">Start Game</button>
+        <nav id="selectionViews" class="selection-views" aria-label="Card selection view">
+          <button type="button" data-selection-view="deck" aria-pressed="true">By Deck</button>
+          <button type="button" data-selection-view="verb" aria-pressed="false">By Verb</button>
+          <button type="button" data-selection-view="particle" aria-pressed="false">By Particle</button>
+        </nav>
+        <fieldset id="deckPicker" class="deck-picker" aria-label="Card selection"></fieldset>
       </section>
 
       <section id="game" class="game hidden" aria-live="polite">

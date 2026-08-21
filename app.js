@@ -123,6 +123,7 @@ const CARD_DATA = [
 ].map((card, index) => ({
   ...card,
   id: `${card.deck}-${index}-${card.phrase}`,
+  verb: card.phrase.split(" ")[0],
   particle: card.phrase.split(" ").at(-1),
   image: `Verb Phrase cards/card front/${card.phrase}.jpg`,
 }));
@@ -147,6 +148,9 @@ const els = {
   setup: document.querySelector("#setup"),
   game: document.querySelector("#game"),
   deckPicker: document.querySelector("#deckPicker"),
+  selectionViews: document.querySelector("#selectionViews"),
+  quickSelectBtn: document.querySelector("#quickSelectBtn"),
+  selectionSummary: document.querySelector("#selectionSummary"),
   startBtn: document.querySelector("#startBtn"),
   newGameBtn: document.querySelector("#newGameBtn"),
   particles: document.querySelector("#particles"),
@@ -164,6 +168,15 @@ const els = {
   turnCount: document.querySelector("#turnCount"),
   matchHint: document.querySelector("#matchHint"),
 };
+
+let quickSelectEnabled = false;
+let quickSelectAnchor = null;
+let selectionView = "deck";
+const selectedCardSet = new Set(
+  CARD_DATA.map((card, index) => ({ card, index }))
+    .filter(({ card }) => card.deck === 1)
+    .map(({ index }) => index),
+);
 
 function shuffle(items) {
   const copy = [...items];
@@ -190,8 +203,8 @@ function particleMatches(cardParticle, tableParticle) {
   return tableParticle === "wild" || cardParticle === tableParticle;
 }
 
-function selectedDecks() {
-  return [...els.deckPicker.querySelectorAll("input:checked")].map((input) => Number(input.value));
+function selectedCardIndices() {
+  return [...selectedCardSet].sort((a, b) => a - b);
 }
 
 function cardButtonClasses(card) {
@@ -200,17 +213,176 @@ function cardButtonClasses(card) {
   return `card vp-card ${state.selectedVpId === card.id ? "selected" : ""} ${matchable ? "matchable" : ""}`;
 }
 
-function renderDeckPicker() {
-  const deckCounts = [1, 2, 3, 4].map((deck) => CARD_DATA.filter((card) => card.deck === deck).length);
-  els.deckPicker.innerHTML = deckCounts.map((count, index) => {
-    const deck = index + 1;
+function uniqueValues(items) {
+  return [...new Set(items)].sort((a, b) => a.localeCompare(b));
+}
+
+function indexedCards(predicate = () => true) {
+  return CARD_DATA.map((card, cardIndex) => ({ card, cardIndex })).filter(({ card }) => predicate(card));
+}
+
+function wordOption({ card, cardIndex }, groupKey) {
+  return `
+    <label class="word-option">
+      <input type="checkbox" data-card-index="${cardIndex}" data-range-group="${groupKey}" ${selectedCardSet.has(cardIndex) ? "checked" : ""}>
+      <span>
+        <strong>${card.phrase}</strong>
+        <small>${card.meaning} · Deck ${card.deck}</small>
+      </span>
+    </label>
+  `;
+}
+
+function selectionGroup(title, subtitle, items, groupKey, extraClass = "") {
+  return `
+    <section class="selection-group ${extraClass}" data-selection-group="${groupKey}">
+      <div class="deck-heading">
+        <div><h3>${title}</h3><span>${subtitle}</span></div>
+        <button class="deck-select" type="button" data-group-select>Select group</button>
+      </div>
+      <div class="word-list">${items.map((item) => wordOption(item, groupKey)).join("")}</div>
+    </section>
+  `;
+}
+
+function renderDeckView() {
+  return [1, 2, 3, 4].map((deck) => {
+    const cards = indexedCards((card) => card.deck === deck);
+    return selectionGroup(`Deck ${deck}`, `${cards.length} cards`, cards, `deck-${deck}`, "deck-group");
+  }).join("");
+}
+
+function renderVerbView() {
+  return uniqueValues(CARD_DATA.map((card) => card.verb)).map((verb) => {
+    const verbCards = indexedCards((card) => card.verb === verb);
+    const particles = uniqueValues(verbCards.map(({ card }) => card.particle));
     return `
-      <label class="deck-option">
-        <input type="checkbox" value="${deck}" ${deck === 1 ? "checked" : ""}>
-        <span>Deck ${deck}<br><small>${count} cards</small></span>
-      </label>
+      <section class="verb-group selection-group" data-selection-group="verb-${verb}">
+        <div class="deck-heading verb-heading">
+          <div><h3>${verb}</h3><span>${particles.length} particles · ${verbCards.length} cards</span></div>
+          <button class="deck-select" type="button" data-group-select>Select verb</button>
+        </div>
+        <div class="particle-children">
+          ${particles.map((particle) => {
+            const cards = verbCards.filter(({ card }) => card.particle === particle);
+            return selectionGroup(particle, `${cards.length} card${cards.length === 1 ? "" : "s"}`, cards, `verb-${verb}-${particle}`, "particle-child");
+          }).join("")}
+        </div>
+      </section>
     `;
   }).join("");
+}
+
+function selectedVerbCount(particle) {
+  return uniqueValues(selectedCardIndices()
+    .map((index) => CARD_DATA[index])
+    .filter((card) => card.particle === particle)
+    .map((card) => card.verb)).length;
+}
+
+function renderParticleView() {
+  const particles = uniqueValues(CARD_DATA.map((card) => card.particle));
+  return `
+    <section class="particle-count-panel">
+      <div class="particle-count-header">
+        <div>
+          <h3>Choose verbs per particle</h3>
+          <p>Each count selects that many verb + particle combinations and includes all matching card meanings.</p>
+        </div>
+        <label class="same-count-option">
+          <input id="sameParticleCount" type="checkbox">
+          <span>Same number across particles</span>
+        </label>
+      </div>
+      <div class="particle-count-grid">
+        ${particles.map((particle) => {
+          const verbs = uniqueValues(CARD_DATA.filter((card) => card.particle === particle).map((card) => card.verb));
+          return `
+            <label class="particle-count-row">
+              <span><strong>${particle}</strong><small>Up to ${verbs.length} verbs</small></span>
+              <input type="number" min="0" max="${verbs.length}" data-particle-count="${particle}" data-individual-max="${verbs.length}" value="${selectedVerbCount(particle)}">
+              <span class="particle-preview" data-particle-preview="${particle}"></span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderCardPicker() {
+  clearQuickSelectAnchor();
+  els.deckPicker.className = `deck-picker ${selectionView}-view`;
+  els.deckPicker.innerHTML = selectionView === "deck"
+    ? renderDeckView()
+    : selectionView === "verb" ? renderVerbView() : renderParticleView();
+
+  if (selectionView === "particle") updateParticlePreviews();
+  updateSetupControls();
+}
+
+function clearQuickSelectAnchor() {
+  if (quickSelectAnchor) quickSelectAnchor.closest(".word-option")?.classList.remove("range-anchor");
+  quickSelectAnchor = null;
+}
+
+function updateSetupControls() {
+  const selectedCount = selectedCardIndices().length;
+  els.selectionSummary.textContent = `${selectedCount} of ${CARD_DATA.length} cards selected`;
+  els.startBtn.disabled = selectedCount === 0;
+  els.quickSelectBtn.disabled = selectionView === "particle";
+
+  els.deckPicker.querySelectorAll("[data-selection-group]").forEach((group) => {
+    const inputs = [...group.querySelectorAll("[data-card-index]")];
+    const button = group.querySelector(":scope > .deck-heading [data-group-select]");
+    if (button) button.textContent = inputs.length && inputs.every((input) => input.checked) ? "Clear group" : "Select group";
+  });
+}
+
+function syncVisibleCardInputs() {
+  els.deckPicker.querySelectorAll("[data-card-index]").forEach((input) => {
+    input.checked = selectedCardSet.has(Number(input.dataset.cardIndex));
+  });
+}
+
+function updateParticlePreviews() {
+  els.deckPicker.querySelectorAll("[data-particle-preview]").forEach((preview) => {
+    const particle = preview.dataset.particlePreview;
+    const verbs = uniqueValues(selectedCardIndices()
+      .map((index) => CARD_DATA[index])
+      .filter((card) => card.particle === particle)
+      .map((card) => card.verb));
+    preview.textContent = verbs.length ? verbs.join(", ") : "None selected";
+  });
+}
+
+function updateParticleSelection() {
+  const countInputs = [...els.deckPicker.querySelectorAll("[data-particle-count]")];
+  if (!countInputs.length) return;
+
+  const previousVerbs = new Map(countInputs.map((input) => {
+    const particle = input.dataset.particleCount;
+    const verbs = uniqueValues(selectedCardIndices()
+      .map((index) => CARD_DATA[index])
+      .filter((card) => card.particle === particle)
+      .map((card) => card.verb));
+    return [particle, verbs];
+  }));
+
+  selectedCardSet.clear();
+  countInputs.forEach((input) => {
+    const particle = input.dataset.particleCount;
+    const verbs = uniqueValues(CARD_DATA.filter((card) => card.particle === particle).map((card) => card.verb));
+    const count = Number(input.value);
+    const chosenVerbs = (previousVerbs.get(particle) || []).filter((verb) => verbs.includes(verb)).slice(0, count);
+    verbs.forEach((verb) => {
+      if (chosenVerbs.length < count && !chosenVerbs.includes(verb)) chosenVerbs.push(verb);
+    });
+    CARD_DATA.forEach((card, index) => {
+      if (card.particle === particle && chosenVerbs.includes(card.verb)) selectedCardSet.add(index);
+    });
+  });
+  updateParticlePreviews();
 }
 
 function render() {
@@ -271,7 +443,8 @@ function flipParticle(index) {
 
 function drawOne() {
   state.draws += 1;
-  const useRetry = state.draws % 3 === 0 && state.retryPile.length > 0;
+  const useRetry = state.drawPile.length === 0
+    || (state.draws % 3 === 0 && state.retryPile.length > 0);
   const source = useRetry ? state.retryPile : state.drawPile;
   if (source.length > 0) state.vpHand.push(source.pop());
 }
@@ -280,15 +453,15 @@ function dealOne() {
   if (state.drawPile.length > 0) state.vpHand.push(state.drawPile.pop());
 }
 
-function endTurn() {
-  drawOne();
+function endTurn({ draw = true } = {}) {
+  if (draw) drawOne();
   state.turn += 1;
   checkGameEnd();
   render();
 }
 
 function checkGameEnd() {
-  if (state.vpHand.length || state.drawPile.length || state.retryPile.length) return;
+  if (state.drawPile.length || state.retryPile.length) return;
   setBestScore(state.score);
   showFeedback("Game Complete", `Final score: ${state.score}. Best for this deck set: ${bestScore()}.`, "good");
 }
@@ -303,11 +476,11 @@ function hideFeedback() {
 }
 
 function startGame() {
-  const decks = selectedDecks();
-  if (!decks.length) return;
+  const cardIndices = selectedCardIndices();
+  if (!cardIndices.length) return;
 
-  state.gameKey = decks.sort().join("-");
-  state.drawPile = shuffle(CARD_DATA.filter((card) => decks.includes(card.deck)));
+  state.gameKey = cardIndices.join("-");
+  state.drawPile = shuffle(cardIndices.map((index) => CARD_DATA[index]));
   state.retryPile = [];
   state.discardPile = [];
   state.vpHand = [];
@@ -366,8 +539,8 @@ function playFunction(particleIndex) {
   state.functionHand.splice(functionIndex, 1);
   state.selectedFunctionId = null;
   state.pendingFunctionFlips = 0;
-  showFeedback(card.label, `${card.label} used. Your turn ends after drawing one VP.`, "good");
-  endTurn();
+  showFeedback(card.label, `${card.label} used. Your turn ends.`, "good");
+  endTurn({ draw: false });
 }
 
 function shuffleHandFunction() {
@@ -383,8 +556,8 @@ function shuffleHandFunction() {
   const [card] = state.functionHand.splice(functionIndex, 1);
   state.selectedFunctionId = null;
   state.pendingFunctionFlips = 0;
-  showFeedback(card.label, `Exchanged ${count} VP cards with the draw pile. Your turn ends after drawing one VP.`, "good");
-  endTurn();
+  showFeedback(card.label, `Exchanged ${count} VP cards with the draw pile. Your turn ends.`, "good");
+  endTurn({ draw: false });
 }
 
 function flipAllFunction() {
@@ -394,11 +567,116 @@ function flipAllFunction() {
   const [card] = state.functionHand.splice(functionIndex, 1);
   state.selectedFunctionId = null;
   state.pendingFunctionFlips = 0;
-  showFeedback(card.label, "All particle cards flipped. Your turn ends after drawing one VP.", "good");
-  endTurn();
+  showFeedback(card.label, "All particle cards flipped. Your turn ends.", "good");
+  endTurn({ draw: false });
 }
 
 els.startBtn.addEventListener("click", startGame);
+els.selectionViews.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-selection-view]");
+  if (!button) return;
+  selectionView = button.dataset.selectionView;
+  els.selectionViews.querySelectorAll("[data-selection-view]").forEach((viewButton) => {
+    viewButton.setAttribute("aria-pressed", String(viewButton === button));
+  });
+  if (selectionView === "particle" && quickSelectEnabled) {
+    quickSelectEnabled = false;
+    els.quickSelectBtn.setAttribute("aria-pressed", "false");
+    els.quickSelectBtn.textContent = "Quick Select: Off";
+  }
+  renderCardPicker();
+});
+
+els.quickSelectBtn.addEventListener("click", () => {
+  quickSelectEnabled = !quickSelectEnabled;
+  clearQuickSelectAnchor();
+  els.quickSelectBtn.setAttribute("aria-pressed", String(quickSelectEnabled));
+  els.quickSelectBtn.textContent = `Quick Select: ${quickSelectEnabled ? "On" : "Off"}`;
+  els.selectionSummary.textContent = quickSelectEnabled
+    ? "Quick Select is on: choose the first and last card in a group."
+    : `${selectedCardIndices().length} of ${CARD_DATA.length} cards selected`;
+});
+
+els.deckPicker.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-group-select]");
+  if (!button) return;
+  const group = button.closest("[data-selection-group]");
+  const inputs = [...group.querySelectorAll("[data-card-index]")];
+  const shouldSelect = !inputs.every((input) => input.checked);
+  inputs.forEach((input) => {
+    const cardIndex = Number(input.dataset.cardIndex);
+    input.checked = shouldSelect;
+    if (shouldSelect) selectedCardSet.add(cardIndex);
+    else selectedCardSet.delete(cardIndex);
+  });
+  clearQuickSelectAnchor();
+  syncVisibleCardInputs();
+  updateSetupControls();
+});
+
+els.deckPicker.addEventListener("change", (event) => {
+  const sameCount = event.target.closest("#sameParticleCount");
+  if (sameCount) {
+    const inputs = [...els.deckPicker.querySelectorAll("[data-particle-count]")];
+    const sharedMax = Math.min(...inputs.map((input) => Number(input.dataset.individualMax)));
+    inputs.forEach((input) => {
+      input.max = sameCount.checked ? sharedMax : input.dataset.individualMax;
+    });
+    if (sameCount.checked && inputs.length) {
+      const sharedValue = Math.min(Number(inputs[0].value), sharedMax);
+      inputs.forEach((input) => { input.value = sharedValue; });
+      updateParticleSelection();
+      updateSetupControls();
+    }
+    return;
+  }
+
+  const input = event.target.closest("[data-card-index]");
+  if (!input) return;
+  const cardIndex = Number(input.dataset.cardIndex);
+  if (input.checked) selectedCardSet.add(cardIndex);
+  else selectedCardSet.delete(cardIndex);
+
+  if (quickSelectEnabled) {
+    input.checked = true;
+    selectedCardSet.add(cardIndex);
+    if (!quickSelectAnchor || quickSelectAnchor.dataset.rangeGroup !== input.dataset.rangeGroup) {
+      clearQuickSelectAnchor();
+      quickSelectAnchor = input;
+      input.closest(".word-option").classList.add("range-anchor");
+      els.selectionSummary.textContent = "First card selected. Now choose the last card in this group.";
+      return;
+    }
+
+    const groupInputs = [...input.closest("[data-selection-group]").querySelectorAll(`[data-range-group="${input.dataset.rangeGroup}"]`)];
+    const firstIndex = groupInputs.indexOf(quickSelectAnchor);
+    const lastIndex = groupInputs.indexOf(input);
+    const [start, end] = firstIndex < lastIndex ? [firstIndex, lastIndex] : [lastIndex, firstIndex];
+    groupInputs.slice(start, end + 1).forEach((item) => {
+      item.checked = true;
+      selectedCardSet.add(Number(item.dataset.cardIndex));
+    });
+    clearQuickSelectAnchor();
+  }
+
+  syncVisibleCardInputs();
+  updateSetupControls();
+});
+
+els.deckPicker.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-particle-count]");
+  if (!input) return;
+  const sameCount = els.deckPicker.querySelector("#sameParticleCount");
+  if (sameCount?.checked) {
+    const inputs = [...els.deckPicker.querySelectorAll("[data-particle-count]")];
+    const sharedMax = Math.min(...inputs.map((item) => Number(item.dataset.individualMax)));
+    const sharedValue = Math.max(0, Math.min(Number(input.value) || 0, sharedMax));
+    inputs.forEach((item) => { item.value = sharedValue; });
+  }
+  updateParticleSelection();
+  updateSetupControls();
+});
+
 els.newGameBtn.addEventListener("click", () => {
   els.game.classList.add("hidden");
   els.setup.classList.remove("hidden");
@@ -435,5 +713,5 @@ els.particles.addEventListener("click", (event) => {
   if (state.selectedFunctionId) playFunction(particleIndex);
 });
 
-renderDeckPicker();
+renderCardPicker();
 els.bestScore.textContent = bestScore();
