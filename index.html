@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Put N Turn</title>
-    <link rel="stylesheet" href="styles.css?v=20260821-result-auto-flip">
+    <link rel="stylesheet" href="styles.css?v=20260821-text-reward-modal">
   </head>
   <body>
     <main class="app">
@@ -19,7 +19,7 @@
         <div class="setup-header">
           <div class="setup-copy">
             <h2>Choose Words</h2>
-            <p>Select the verb phrases you want to practice. The game starts with up to 4 verb phrase cards and 2 function cards.</p>
+            <p>Select the verb phrases you want to practice. The game starts with up to 4 verb phrase cards and 2 function cards. Earn 5 correct matches to choose another function card.</p>
             <p id="selectionSummary" class="selection-summary"></p>
           </div>
           <div class="setup-actions">
@@ -83,7 +83,9 @@
               <div><span>Turn</span><strong id="turnCount">1</strong></div>
               <div><span>Discarded</span><strong id="discardCount">0</strong></div>
               <div><span>VPs in hand</span><strong id="handCount">0</strong></div>
+              <div><span>Function points</span><strong id="functionPointCount">0</strong></div>
             </div>
+            <button id="addFunctionPointBtn" class="secondary" type="button">+1 Function Point</button>
             <button id="newGameBtn" class="secondary">New Game</button>
           </div>
         </section>
@@ -94,6 +96,19 @@
             <h2 id="helpTitle">How To Play</h2>
             <p>Swipe left or right to view cards. Swipe up to stage the centered card.</p>
             <p>Click a particle card to place the staged VP. Click another particle to move it, then confirm to check the match.</p>
+            <p>Every 5 correct VP matches opens a function-card picker. Choose one function card to add to your hand, then play it from the function-card wheel.</p>
+          </div>
+        </section>
+
+        <section id="functionRewardModal" class="modal hidden" aria-modal="true" role="dialog" aria-labelledby="functionRewardTitle">
+          <div class="modal-content function-reward-content">
+            <h2 id="functionRewardTitle">Choose A Function Card</h2>
+            <p>Reward unlocked. Pick one function card to add to your hand.</p>
+            <div class="function-reward-hand">
+              <strong>Current Hand</strong>
+              <div id="functionRewardHand" class="function-reward-hand-list"></div>
+            </div>
+            <div id="functionRewardChoices" class="function-reward-choices"></div>
           </div>
         </section>
       </section>
@@ -104,6 +119,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=20260821-result-auto-flip"></script>
+    <script src="app.js?v=20260821-text-reward-modal"></script>
   </body>
 </html>

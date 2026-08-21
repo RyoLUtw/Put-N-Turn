@@ -748,7 +748,13 @@ button:disabled {
   overflow: hidden;
   align-items: center;
   justify-content: center;
+  perspective: 900px;
   transition: transform 260ms cubic-bezier(.2,.8,.2,1), box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.particle-card.is-flipping {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4px rgba(214, 159, 41, 0.18), 0 18px 38px rgba(23, 33, 27, 0.18);
 }
 
 .particle-card.targetable {
@@ -769,6 +775,8 @@ button:disabled {
   min-height: 0;
   max-height: calc(100% - 30px);
   aspect-ratio: auto;
+  backface-visibility: hidden;
+  transform-origin: center center;
 }
 
 .card-title {
@@ -830,6 +838,7 @@ button:disabled {
 
 .staged-vp-card.is-flying-source {
   opacity: 0;
+  visibility: hidden;
 }
 
 .staged-vp-flight {
@@ -929,6 +938,80 @@ button:disabled {
 .modal-content p {
   color: var(--muted);
   line-height: 1.45;
+}
+
+.function-reward-content {
+  width: min(560px, 94vw);
+  max-height: min(680px, 88dvh);
+  overflow: hidden;
+}
+
+.function-reward-hand {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7faf5;
+}
+
+.function-reward-hand strong {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.function-reward-hand-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.function-reward-hand-list span {
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #e4efe9;
+  color: var(--accent-strong);
+  font-size: 0.92rem;
+  font-weight: 850;
+}
+
+.function-reward-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.function-choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  border: 2px solid rgba(33, 124, 104, 0.28);
+  border-radius: 8px;
+  min-height: 50px;
+  padding: 0 14px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(23, 33, 27, 0.08);
+  color: var(--ink);
+  font-weight: 900;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.function-choice:hover,
+.function-choice:focus-visible {
+  border-color: var(--gold);
+  background: #fbfaf4;
+  box-shadow: 0 0 0 4px rgba(214, 159, 41, 0.18), 0 12px 24px rgba(23, 33, 27, 0.12);
+}
+
+.function-choice span {
+  overflow-wrap: anywhere;
 }
 
 .modal-close {
@@ -1233,7 +1316,8 @@ button:disabled {
   }
 
   .particles,
-  .scoreboard {
+  .scoreboard,
+  .function-reward-choices {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1291,5 +1375,14 @@ button:disabled {
 
   .game .hand .wheel-card {
     min-height: min(300px, calc(100% - 12px));
+  }
+
+  .function-reward-choices {
+    gap: 8px;
+  }
+
+  .function-choice {
+    min-height: 46px;
+    padding: 0 10px;
   }
 }
