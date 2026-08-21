@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Put N Turn</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <h1>Put N Turn</h1>
+          <p>Match verb phrases to the particle currently showing on the table.</p>
+        </div>
+        <section class="scoreboard" aria-label="Scoreboard">
+          <div><span>Score</span><strong id="score">0</strong></div>
+          <div><span>Best</span><strong id="bestScore">0</strong></div>
+          <div><span>Draw</span><strong id="drawCount">0</strong></div>
+          <div><span>Retry</span><strong id="retryCount">0</strong></div>
+        </section>
+      </header>
+
+      <section id="setup" class="setup">
+        <div class="setup-copy">
+          <h2>Choose Decks</h2>
+          <p>Select one or more decks. The game starts with 4 verb phrase cards and 2 function cards.</p>
+        </div>
+        <fieldset id="deckPicker" class="deck-picker" aria-label="Deck selection"></fieldset>
+        <button id="startBtn" class="primary">Start Game</button>
+      </section>
+
+      <section id="game" class="game hidden" aria-live="polite">
+        <aside class="panel">
+          <div class="panel-row">
+            <span>Turn</span>
+            <strong id="turnCount">1</strong>
+          </div>
+          <div class="panel-row">
+            <span>Discarded</span>
+            <strong id="discardCount">0</strong>
+          </div>
+          <div class="panel-row">
+            <span>VPs in hand</span>
+            <strong id="handCount">0</strong>
+          </div>
+          <button id="newGameBtn" class="secondary">New Game</button>
+        </aside>
+
+        <section class="table-area">
+          <h2>Particle Cards</h2>
+          <div id="particles" class="particles"></div>
+        </section>
+
+        <section class="hand-area">
+          <div class="section-title">
+            <h2>Verb Phrase Hand</h2>
+            <p id="matchHint">Choose a VP, then choose a particle.</p>
+          </div>
+          <div id="vpHand" class="hand"></div>
+        </section>
+
+        <section class="function-area">
+          <h2>Function Cards</h2>
+          <div id="functionHand" class="function-hand"></div>
+        </section>
+      </section>
+
+      <section id="feedback" class="feedback hidden">
+        <button id="closeFeedback" aria-label="Close feedback">x</button>
+        <div id="feedbackContent"></div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

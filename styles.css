@@ -1,0 +1,381 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f8f3;
+  --ink: #17211b;
+  --muted: #5b665f;
+  --line: #d8dfd4;
+  --surface: #ffffff;
+  --accent: #217c68;
+  --accent-strong: #125f52;
+  --warn: #b3432f;
+  --gold: #d69f29;
+  --shadow: 0 18px 50px rgba(23, 33, 27, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  cursor: pointer;
+}
+
+.app {
+  width: min(1440px, 100%);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 4.8rem);
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 1rem;
+}
+
+.topbar p,
+.setup p,
+.section-title p {
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(74px, 1fr));
+  gap: 8px;
+}
+
+.scoreboard div,
+.panel,
+.setup,
+.feedback {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.scoreboard div {
+  min-height: 70px;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.scoreboard span,
+.panel-row span,
+.card-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.scoreboard strong {
+  font-size: 1.7rem;
+}
+
+.setup {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 2fr auto;
+  gap: 18px;
+  align-items: center;
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.deck-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+
+.deck-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fbfcfa;
+}
+
+.deck-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.primary,
+.secondary {
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 0 18px;
+  font-weight: 800;
+}
+
+.primary {
+  color: #fff;
+  background: var(--accent);
+}
+
+.secondary {
+  color: var(--accent-strong);
+  background: #dcefe8;
+}
+
+.game {
+  display: grid;
+  grid-template-columns: 170px 1fr;
+  grid-template-areas:
+    "panel table"
+    "panel hand"
+    "panel functions";
+  gap: 18px;
+}
+
+.panel {
+  grid-area: panel;
+  align-self: start;
+  border-radius: 8px;
+  padding: 14px;
+  position: sticky;
+  top: 16px;
+}
+
+.panel-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel .secondary {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.table-area {
+  grid-area: table;
+}
+
+.hand-area {
+  grid-area: hand;
+}
+
+.function-area {
+  grid-area: functions;
+}
+
+.table-area,
+.hand-area,
+.function-area {
+  min-width: 0;
+}
+
+.section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.particles,
+.hand,
+.function-hand {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.particles {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.hand {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.function-hand {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 180px));
+}
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 218px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px;
+  box-shadow: 0 10px 24px rgba(23, 33, 27, 0.10);
+  text-align: left;
+}
+
+.card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.card.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 4px rgba(214, 159, 41, 0.22), var(--shadow);
+}
+
+.card.matchable:not(:disabled) {
+  border-color: rgba(33, 124, 104, 0.45);
+}
+
+.card img {
+  width: 100%;
+  aspect-ratio: 2.5 / 3.5;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #eef2eb;
+}
+
+.particle-card {
+  min-height: 220px;
+  align-items: center;
+}
+
+.particle-card img {
+  max-height: 184px;
+}
+
+.card-title {
+  font-weight: 850;
+  line-height: 1.1;
+}
+
+.meaning {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.25;
+}
+
+.function-card {
+  min-height: 198px;
+}
+
+.feedback {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 5;
+  width: min(420px, calc(100vw - 40px));
+  border-radius: 8px;
+  padding: 18px;
+}
+
+.feedback.good {
+  border-color: rgba(33, 124, 104, 0.6);
+}
+
+.feedback.bad {
+  border-color: rgba(179, 67, 47, 0.6);
+}
+
+.feedback h2 {
+  font-size: 1.2rem;
+  margin-right: 24px;
+}
+
+.feedback p {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+#closeFeedback {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #edf1ea;
+  color: var(--ink);
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .topbar,
+  .setup,
+  .game {
+    grid-template-columns: 1fr;
+  }
+
+  .game {
+    grid-template-areas:
+      "panel"
+      "table"
+      "hand"
+      "functions";
+  }
+
+  .panel {
+    position: static;
+  }
+
+  .particles,
+  .deck-picker,
+  .scoreboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .app {
+    padding: 14px;
+  }
+
+  .particles,
+  .hand,
+  .function-hand {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .card {
+    min-height: 180px;
+  }
+}
