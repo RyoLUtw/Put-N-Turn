@@ -156,7 +156,7 @@ const state = {
   gameKey: "all",
 };
 
-const DEBUG_BUILD = "20260821-text-reward-modal";
+const DEBUG_BUILD = "20260822-confirm-tray-actions-only";
 
 function debugLog(action, details = {}) {
   console.log(`[Put N Turn ${DEBUG_BUILD}] ${action}`, details);
@@ -1049,18 +1049,13 @@ function render() {
     </button>
   `).join("")}${stagedCard && state.stagedParticleIndex === null && state.stagedCardVisible ? stagedCardMarkup(stagedCard) : ""}`;
   if (stagedCard && (state.stagedCardVisible || state.stagedParticleIndex !== null)) {
-    const particleFace = state.particles[state.stagedParticleIndex]?.face.toUpperCase() || "";
-    const trayText = particleFace ? `on ${particleFace}` : "not placed";
     const confirmLabel = vpTargeting ? "Confirm" : `Confirm Flip${state.pendingFunctionFlips > 1 ? ` (${state.pendingFunctionFlips})` : ""}`;
+    const confirmDisabled = state.stagedParticleIndex === null ? "disabled aria-disabled=\"true\"" : "";
     els.vpConfirmTray.classList.remove("hidden");
     els.vpConfirmTray.innerHTML = `
-      <div class="vp-confirm-copy">
-        <strong>${stagedCard.phrase || stagedCard.label}</strong>
-        <span>${trayText}</span>
-      </div>
       <div class="vp-confirm-actions">
         <button class="unplay-vp-btn" type="button" data-unplay-vp>Unplay</button>
-        ${state.stagedParticleIndex !== null ? `<button class="confirm-vp-btn" type="button" data-confirm-vp>${confirmLabel}</button>` : ""}
+        <button class="confirm-vp-btn" type="button" data-confirm-vp ${confirmDisabled}>${confirmLabel}</button>
       </div>
     `;
   } else {
@@ -1561,6 +1556,7 @@ els.vpConfirmTray.addEventListener("click", (event) => {
   const confirmButton = event.target.closest("[data-confirm-vp]");
   if (!confirmButton) return;
   event.preventDefault();
+  if (confirmButton.disabled) return;
   if (state.targeting?.type === "function") confirmPlacedFunction();
   else confirmPlacedVp();
 });
@@ -1621,6 +1617,7 @@ els.vpConfirmTray.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" && event.key !== " ") return;
   event.preventDefault();
   if (event.target.closest("[data-unplay-vp]")) unplayStagedCard();
+  else if (event.target.closest("[data-confirm-vp]")?.disabled) return;
   else if (state.targeting?.type === "function") confirmPlacedFunction();
   else confirmPlacedVp();
 });

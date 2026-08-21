@@ -884,6 +884,13 @@ button:disabled {
   background: #dcefe8;
 }
 
+.confirm-vp-btn:disabled {
+  color: #6d7771;
+  background: #d8ded9;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
 .confirm-vp-btn:focus-visible,
 .unplay-vp-btn:focus-visible,
 .result-action:focus-visible {
